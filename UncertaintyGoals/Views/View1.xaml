@@ -1,0 +1,116 @@
+﻿<UserControl x:Class="Views.View1"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:UncertaintyGoals.CustomWidgets"
+        xmlns:local="clr-namespace:Views"
+        xmlns:vms="clr-namespace:ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:customwidgets="clr-namespace:UncertaintyGoals.CustomWidgets"
+             Height="600" Width="580">
+  <UserControl.Resources>
+    <Style TargetType="ListViewItem">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+  </UserControl.Resources>
+
+
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition />
+      <RowDefinition />
+      <RowDefinition />
+      <RowDefinition />
+      <RowDefinition />
+      <RowDefinition />
+      <RowDefinition />
+      <RowDefinition />
+      <RowDefinition />
+      <RowDefinition />
+      <RowDefinition />
+    </Grid.RowDefinitions>
+
+    <Grid Grid.Row="0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="5*"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+
+      <Label Grid.Column="0" Content="{Binding ErrorMsg, FallbackValue=ErrorMessages}" 
+             FontSize="16" Foreground="OrangeRed"/>
+      <Button Grid.Column="1" Margin="10, 15" Command="{Binding AboutCmd}">About</Button>
+    </Grid>
+
+    <Grid Grid.Row="1" Grid.RowSpan="5">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="3*"/>
+        <ColumnDefinition Width="2*"/>
+      </Grid.ColumnDefinitions>
+
+      <StackPanel Grid.Column="0">
+        <Label Content="Clinical Goals" FontSize="20"/>
+        <ListView Margin="10 0" Height="230" ItemsSource="{Binding ClinicalGoalList}">
+          <ListView.View>
+            <GridView>
+              <GridViewColumn Header="Priority" Width="50" DisplayMemberBinding="{Binding Path=Priority}"/>
+              <GridViewColumn Header="Structure" Width="100" DisplayMemberBinding="{Binding Path=StructureId}"/>
+              <GridViewColumn Header="Objective" Width="170" DisplayMemberBinding="{Binding Path=Objective}"/>
+            </GridView>
+          </ListView.View>
+        </ListView>
+      </StackPanel>
+
+      <StackPanel Grid.Column="1">
+        <Label Content="Uncertainty Scenarios" FontSize="20"/>
+        <ListView Margin="10 0" Height="230" ItemsSource="{Binding UncertaintyScenarioList}">
+          <ListView.View>
+            <GridView>
+              <GridViewColumn Header="Scenario Name" Width="200" DisplayMemberBinding="{Binding Path=Name}"/>
+            </GridView>
+          </ListView.View>
+        </ListView>
+      </StackPanel>
+    </Grid>
+
+    <CheckBox Grid.Row="6" Content="Save and Show HTML" FontSize="12" Margin="5 10 0 0"
+              HorizontalAlignment="Left"
+              FlowDirection="RightToLeft"
+              IsChecked="{Binding Path=SaveAndShowHtml, Mode=TwoWay}" >
+      <CheckBox.LayoutTransform>
+        <ScaleTransform ScaleX="2" ScaleY="2" />
+      </CheckBox.LayoutTransform>
+    </CheckBox>
+
+    <StackPanel Orientation="Horizontal" Grid.Row="7">
+      <Label Content="Save as" FontSize="24"/>
+
+      <CheckBox Content="CSV" FontSize="12" Margin="20 10 0 0"
+                IsChecked="{Binding Path=SaveCsv, Mode=TwoWay}" >
+        <CheckBox.LayoutTransform>
+          <ScaleTransform ScaleX="2" ScaleY="2" />
+        </CheckBox.LayoutTransform>
+      </CheckBox>
+
+      <CheckBox Content="JSON" FontSize="12" Margin="20 10 0 0"
+                IsChecked="{Binding Path=SaveJson, Mode=TwoWay}" >
+        <CheckBox.LayoutTransform>
+          <ScaleTransform ScaleX="2" ScaleY="2" />
+        </CheckBox.LayoutTransform>
+      </CheckBox>
+    </StackPanel>
+
+    <StackPanel Orientation="Horizontal" Grid.Row="8">
+      <Label Content="Save location" FontSize="24" Margin="0 5 0 0"/>
+      <Button Command="{Binding SelectSavePathCmd}" Margin="10 10">
+        <Label Content="{Binding SavePath, FallbackValue=SavePath}"
+               Margin="0" Width="300" FontSize="16"/>
+      </Button>
+    </StackPanel>
+
+    <Grid Grid.Row="9" ToolTip="{Binding ErrorMessage}">
+      <Button Grid.Row="8" Margin="30 10" FontSize="20"
+              Command="{Binding CalculateCmd}" 
+            IsEnabled="{Binding SomethingWrongWithPlan}">
+        Calculate
+      </Button>
+    </Grid>
+  </Grid>
+</UserControl>
