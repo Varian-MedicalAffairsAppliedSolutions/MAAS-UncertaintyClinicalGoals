@@ -1,4 +1,4 @@
-# MAAS-ProtonUncertaintyClinicalGoals
+# MAAS-UncertaintyClinicalGoals
 This project's purpose is to evaluate the plan’s Clinical Goals against the doses for all of its uncertainty scenarios.
 <br />
 The Clinical Goals in ESAPI require Eclipse v16 or newer.
