@@ -76,8 +76,8 @@ jobs:
     - name: Update hint paths in the csproj file
       run: |
         .\.github\workflows\Update-EsapiHintPaths.ps1 `
-        -CsprojFilePath .\${{ env.PROJECT_FILE}}\ `
-        -CsprojFileName ${{ env.PROJECT_NAME}}.csproj
+        -CsprojFilePath .\UncertaintyGoals\ `
+        -CsprojFileName UncertaintyClinicalGoals.csproj
 
     - name: Build Solution
       run: msbuild.exe .\${{ env.PROJECT_NAME}}.sln /nologo /nr:false /p:DeleteExistingFiles=True /p:platform="Any CPU" /p:configuration="Debug"
