@@ -80,7 +80,7 @@ jobs:
         -CsprojFileName UncertaintyClinicalGoals.csproj
 
     - name: Build Solution
-      run: msbuild.exe .\${{ env.PROJECT_NAME}}.sln /nologo /nr:false /p:DeleteExistingFiles=True /p:platform="Any CPU" /p:configuration="Debug"
+      run: msbuild.exe .\UncertaintyGoals\UncertaintyClinicalGoals.sln /nologo /nr:false /p:DeleteExistingFiles=True /p:platform="Any CPU" /p:configuration="Debug"
 
     - name: Zip
       run: |
