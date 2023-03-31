@@ -20,6 +20,7 @@ jobs:
     env:
       GITHUB_WORKSPACE_PACKAGES_PATH: packages\ESAPI.16.1.0\lib\net461\
       PROJECT_NAME: UncertaintyClinicalGoals
+      PROJECT_FOLDER: UncertaintyGoals
       MAJOR_VERSION: 1
       MINOR_VERSION: 0
       PATCH_VERSION: 0
@@ -43,7 +44,7 @@ jobs:
     - name: Update Target Framework Version to 4.6.1
       uses: Nambers/ReplaceStringInFile@v1.1
       with:
-        path: .\${{ env.PROJECT_NAME}}\${{ env.PROJECT_NAME}}.csproj
+        path: .\${{ env.PROJECT_FOLDER}}\${{ env.PROJECT_NAME}}.csproj
         oldString: "TargetFrameworkVersion>v[\\d\\.]+<"
         newString: 'TargetFrameworkVersion>v4.6.1<'
 
@@ -51,7 +52,7 @@ jobs:
       id: update_assembly_info
       run: |
         .\.github\workflows\Update-AssemblyInfo.ps1 `
-          -AssemblyInfoFilePath .\${{ env.PROJECT_NAME}}\Properties\AssemblyInfo.cs `
+          -AssemblyInfoFilePath .\${{ env.PROJECT_FOLDER}}\Properties\AssemblyInfo.cs `
           -ExpirationDate "${{ github.event.inputs.dateInput }}" `
           -MajorVersion ${{ env.MAJOR_VERSION }} `
           -MinorVersion ${{ env.MINOR_VERSION }} `
@@ -59,7 +60,7 @@ jobs:
           -BuildNumber ${{ env.BUILD_NUMBER }}
 
     - name: Download nuget packages
-      run: nuget install .\${{ env.PROJECT_NAME}}\packages.config -OutputDirectory ${{ env.PROJECT_NAME}}\packages
+      run: nuget install .\${{ env.PROJECT_FOLDER}}\packages.config -OutputDirectory ${{ env.PROJECT_FOLDER}}\packages
 
     - name: Add VIC GitHub NuGet repository
       run: nuget source add
@@ -70,12 +71,12 @@ jobs:
         -StorePasswordInClearText
 
     - name: Download ESAPI package
-      run: nuget install ESAPI -Version 16.1.0 -OutputDirectory ${{ env.PROJECT_NAME}}\packages
+      run: nuget install ESAPI -Version 16.1.0 -OutputDirectory ${{ env.PROJECT_FOLDER}}\packages
 
     - name: Update hint paths in the csproj file
       run: |
         .\.github\workflows\Update-EsapiHintPaths.ps1 `
-        -CsprojFilePath .\${{ env.PROJECT_NAME}}\ `
+        -CsprojFilePath .\${{ env.PROJECT_FILE}}\ `
         -CsprojFileName ${{ env.PROJECT_NAME}}.csproj
 
     - name: Build Solution
