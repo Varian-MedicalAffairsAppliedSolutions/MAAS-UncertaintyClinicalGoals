@@ -25,25 +25,22 @@ jobs:
       PATCH_VERSION: 0
       BUILD_NUMBER: ${{ github.run_number }}
 
-    # No project dependency
     steps:
     - name: Checkout
       uses: actions/checkout@v3
       with:
         fetch-depth: 0
 
-    # No project dependency
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v1
 
-    # No project dependency
     - name: Navigate to Workspace
       run: cd $GITHUB_WORKSPACE
 
     - name: Update Target Framework Version to 4.6.1
       uses: Nambers/ReplaceStringInFile@v1.1
       with:
-        path: .\${{ env.PROJECT_NAME}}\${{ env.PROJECT_NAME}}.csproj
+        path: .\UncertaintyGoals\UncertaintyClinicalGoals.csproj
         oldString: "TargetFrameworkVersion>v[\\d\\.]+<"
         newString: 'TargetFrameworkVersion>v4.6.1<'
 
@@ -51,7 +48,7 @@ jobs:
       id: update_assembly_info
       run: |
         .\.github\workflows\Update-AssemblyInfo.ps1 `
-          -AssemblyInfoFilePath .\${{ env.PROJECT_NAME}}\Properties\AssemblyInfo.cs `
+          -AssemblyInfoFilePath .\UncertaintyGoals\Properties\AssemblyInfo.cs `
           -ExpirationDate "${{ github.event.inputs.dateInput }}" `
           -MajorVersion ${{ env.MAJOR_VERSION }} `
           -MinorVersion ${{ env.MINOR_VERSION }} `
@@ -59,7 +56,7 @@ jobs:
           -BuildNumber ${{ env.BUILD_NUMBER }}
 
     - name: Download nuget packages
-      run: nuget install .\${{ env.PROJECT_NAME}}\packages.config -OutputDirectory ${{ env.PROJECT_NAME}}\packages
+      run: nuget install .\UncertaintyGoals\packages.config -OutputDirectory UncertaintyGoals\packages
 
     - name: Add VIC GitHub NuGet repository
       run: nuget source add
@@ -70,21 +67,22 @@ jobs:
         -StorePasswordInClearText
 
     - name: Download ESAPI package
-      run: nuget install ESAPI -Version 16.1.0 -OutputDirectory ${{ env.PROJECT_NAME}}\packages
+      run: nuget install ESAPI -Version 16.1.0 -OutputDirectory UncertaintyGoals\packages
+
 
     - name: Update hint paths in the csproj file
       run: |
         .\.github\workflows\Update-EsapiHintPaths.ps1 `
-        -CsprojFilePath .\${{ env.PROJECT_NAME}}\ `
-        -CsprojFileName ${{ env.PROJECT_NAME}}.csproj
+        -CsprojFilePath .\UncertaintyGoals\ `
+        -CsprojFileName UncertaintyClinicalGoals.csproj
 
     - name: Build Solution
-      run: msbuild.exe .\${{ env.PROJECT_NAME}}.sln /nologo /nr:false /p:DeleteExistingFiles=True /p:platform="Any CPU" /p:configuration="Debug"
+      run: msbuild.exe .\UncertaintyGoals\UncertaintyClinicalGoals.sln /nologo /nr:false /p:DeleteExistingFiles=True /p:platform="x64" /p:configuration="Release"
 
     - name: Zip
       run: |
         Compress-Archive `
-          -Path ".\${{ env.PROJECT_NAME}}\bin\Debug\*" `
+          -Path ".\ModulationComplexity\bin\Debug\*" `
           -DestinationPath "${{ github.workspace }}/${{env.PROJECT_NAME}}${{ steps.update_assembly_info.outputs.RELEASE_FILE_NAME }}-EclipseV161.zip"
     
     - name: Create Release
