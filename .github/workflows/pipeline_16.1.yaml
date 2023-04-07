@@ -18,7 +18,7 @@ jobs:
     name: Build ESAPI Script - v16.1
     runs-on: windows-2019
     env:
-      GITHUB_WORKSPACE_PACKAGES_PATH: packages\ESAPI.16.1.0\lib\net461\
+      GITHUB_WORKSPACE_PACKAGES_PATH: ..\packages\ESAPI.16.1.0\lib\net461\
       PROJECT_NAME: MAAS-UncertaintyClinicalGoals
       MAJOR_VERSION: 1
       MINOR_VERSION: 0
