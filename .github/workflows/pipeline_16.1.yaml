@@ -18,8 +18,8 @@ jobs:
     name: Build ESAPI Script - v16.1
     runs-on: windows-2019
     env:
-      GITHUB_WORKSPACE_PACKAGES_PATH: .\UncertaintyGoals\packages\ESAPI.16.1.0\lib\net461\
-      PROJECT_NAME: MAAS-UncertaintyClinicalGoals
+      GITHUB_WORKSPACE_PACKAGES_PATH: packages\ESAPI.16.1.0\lib\net461\
+      PROJECT_NAME: UncertaintyClinicalGoals
       MAJOR_VERSION: 1
       MINOR_VERSION: 0
       PATCH_VERSION: 0
@@ -36,9 +36,6 @@ jobs:
 
     - name: Navigate to Workspace
       run: cd $GITHUB_WORKSPACE
-      
-    - name: Print dir contents
-      run: dir
 
     - name: Update Target Framework Version to 4.6.1
       uses: Nambers/ReplaceStringInFile@v1.1
@@ -57,9 +54,8 @@ jobs:
           -MinorVersion ${{ env.MINOR_VERSION }} `
           -PatchVersion ${{ env.PATCH_VERSION }} `
           -BuildNumber ${{ env.BUILD_NUMBER }}
-          
     - name: Download nuget packages
-      run: nuget install .\UncertaintyGoals\packages.config -OutputDirectory .\UncertaintyGoals\packages
+      run: nuget install .\UncertaintyGoals\packages.config -OutputDirectory UncertaintyGoals\packages
 
     - name: Add VIC GitHub NuGet repository
       run: nuget source add
@@ -70,21 +66,21 @@ jobs:
         -StorePasswordInClearText
 
     - name: Download ESAPI package
-      run: nuget install ESAPI -Version 16.1.0 -OutputDirectory .\UncertaintyGoals\packages
+      run: nuget install ESAPI -Version 16.1.0 -OutputDirectory UncertaintyGoals\packages
 
 
     - name: Update hint paths in the csproj file
       run: |
         .\.github\workflows\Update-EsapiHintPaths.ps1 `
-        -CsprojFileName .\UncertaintyGoals\UncertaintyClinicalGoals.csproj
-        
+        -CsprojFilePath .\ModulationComplexity\ `
+        -CsprojFileName ModulationComplexity.csproj
     - name: Build Solution
-      run: msbuild.exe .\UncertaintyGoals\UncertaintyClinicalGoals.sln /nologo /nr:false /p:DeleteExistingFiles=True /p:platform="x64" /p:configuration="Release"
+      run: msbuild.exe .\UncertaintyGoals\UncertaintyClinicalGoals.csproj /nologo /nr:false /p:DeleteExistingFiles=True /p:platform="x64" /p:configuration="Debug"
 
     - name: Zip
       run: |
         Compress-Archive `
-          -Path ".\UncertaintyGoals\bin\Debug\*" `
+          -Path ".\ModulationComplexity\bin\Debug\*" `
           -DestinationPath "${{ github.workspace }}/${{env.PROJECT_NAME}}${{ steps.update_assembly_info.outputs.RELEASE_FILE_NAME }}-EclipseV161.zip"
     
     - name: Create Release
