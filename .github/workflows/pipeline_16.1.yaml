@@ -72,8 +72,7 @@ jobs:
     - name: Update hint paths in the csproj file
       run: |
         .\.github\workflows\Update-EsapiHintPaths.ps1 `
-        -CsprojFilePath .\ModulationComplexity\ `
-        -CsprojFileName ModulationComplexity.csproj
+        -CsprojFileName .\UncertaintyGoals\UncertaintyClinicalGoals.csproj
     - name: Build Solution
       run: msbuild.exe .\UncertaintyGoals\UncertaintyClinicalGoals.csproj /nologo /nr:false /p:DeleteExistingFiles=True /p:platform="x64" /p:configuration="Debug"
 
