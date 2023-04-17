@@ -70,7 +70,7 @@ jobs:
       run: nuget install ESAPI -Version 16.1.0 -OutputDirectory UncertaintyGoals\packages
       
     - name: Restore NuGet packages
-      run: nuget restore .\UncertaintyGoals\UncertaintyClinicalGoals.csproj -PackagesDirectory ${{GITHUB_WORKSPACE_PACKAGES_PATH}}
+      run: nuget restore .\UncertaintyGoals\UncertaintyClinicalGoals.csproj -PackagesDirectory ${{env.GITHUB_WORKSPACE_PACKAGES_PATH}}
 
     - name: Update hint paths in the csproj file
       run: |
