@@ -54,6 +54,7 @@ jobs:
           -MinorVersion ${{ env.MINOR_VERSION }} `
           -PatchVersion ${{ env.PATCH_VERSION }} `
           -BuildNumber ${{ env.BUILD_NUMBER }}
+          
     - name: Download nuget packages
       run: nuget install .\UncertaintyGoals\packages.config -OutputDirectory UncertaintyGoals\packages
 
@@ -67,7 +68,9 @@ jobs:
 
     - name: Download ESAPI package
       run: nuget install ESAPI -Version 16.1.0 -OutputDirectory UncertaintyGoals\packages
-
+      
+    - name: Restore NuGet packages
+      run: nuget restore .\UncertaintyGoals\UncertaintyClinicalGoals.csproj
 
     - name: Update hint paths in the csproj file
       run: |
