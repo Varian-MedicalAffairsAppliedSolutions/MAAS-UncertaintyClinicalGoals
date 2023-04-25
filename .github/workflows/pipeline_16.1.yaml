@@ -69,6 +69,11 @@ jobs:
     - name: Download ESAPI package
       run: nuget install ESAPI -Version 16.1.0 -OutputDirectory UncertaintyGoals\packages
       
+    - name: List folder contents
+      shell: powershell
+      run: |
+        Get-ChildItem UncertaintyGoals\packages
+      
     - name: Restore NuGet packages
       run: nuget restore .\UncertaintyGoals\UncertaintyClinicalGoals.csproj -PackagesDirectory ${{env.GITHUB_WORKSPACE_PACKAGES_PATH}}
 
