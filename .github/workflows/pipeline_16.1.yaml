@@ -87,7 +87,7 @@ jobs:
     - name: Zip
       run: |
         Compress-Archive `
-          -Path "bin\Debug\*" `
+          -Path "UncertaintyGoals\bin\Debug\*" `
           -DestinationPath "${{ github.workspace }}/${{env.PROJECT_NAME}}${{ steps.update_assembly_info.outputs.RELEASE_FILE_NAME }}-EclipseV161.zip"
     
     - name: Create Release
