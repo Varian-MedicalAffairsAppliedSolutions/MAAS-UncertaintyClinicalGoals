@@ -15,5 +15,10 @@ namespace UncertaintyGoals.Models
     public bool WriteCsv { get; set; }
     public bool WriteAndOpenHtml { get; set; }
     public string SavePath { get; set; }
+
+    public bool AreAllSettingsFalse
+    {
+      get => !WriteJson && !WriteCsv && !WriteAndOpenHtml;
+    }
   }
 }

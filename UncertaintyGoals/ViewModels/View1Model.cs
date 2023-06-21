@@ -138,12 +138,11 @@ namespace ViewModels
           SavePath = this.SavePath
         });
 
-      System.Diagnostics.Process.Start(this.UncertaintyGoalsModel.GetHtmlfileFullPath());
+      if (this.SaveAndShowHtml && !String.IsNullOrEmpty(this.UncertaintyGoalsModel.GetHtmlfileFullPath()))
+        System.Diagnostics.Process.Start(this.UncertaintyGoalsModel.GetHtmlfileFullPath());
 
       if (this.MinMaxRobustDosePlansCanBeCreated && this.CreateMinMaxRobustDosePlans)
-      {
         this.UncertaintyGoalsModel.CreateRobustMinMaxDosePlans();
-      }
     }
 
     private void OnSelectSavePath()

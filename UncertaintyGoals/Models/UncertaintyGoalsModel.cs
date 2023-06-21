@@ -84,6 +84,12 @@ namespace UncertaintyGoals.Models
         Log.Information($"Logging started");
       }
 
+      if (writeToFileSettings.AreAllSettingsFalse)
+      {
+        Log.Information("All write to file selections are 'false' -- skipping.");
+        return;
+      }
+
       #region Core part
 
       try
