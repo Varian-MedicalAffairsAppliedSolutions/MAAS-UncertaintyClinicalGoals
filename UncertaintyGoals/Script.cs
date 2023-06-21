@@ -21,7 +21,7 @@ using System.Globalization;
 
 // TODO: Uncomment the following line if the script requires write access.
 //15.x or later:
-//[assembly: ESAPIScript(IsWriteable = true)]
+[assembly: ESAPIScript(IsWriteable = true)]
 
 namespace VMS.TPS
 {

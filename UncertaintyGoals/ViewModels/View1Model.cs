@@ -61,9 +61,12 @@ namespace ViewModels
     public bool SaveCsv { get; set; }
     public bool SaveJson { get; set; }
     public bool SaveAndShowHtml { get; set; }
+    public bool CreateMinMaxRobustDosePlans { get; set; }
 
     public string ErrorMsg { get; set; }
+    public string WarningMsg { get; set; }
     public bool SomethingWrongWithPlan { get; set; }
+    public bool MinMaxRobustDosePlansCanBeCreated { get; set; }
 
     public ObservableCollection<ClinicalGoalItem> ClinicalGoalList { get; set; }
     public ObservableCollection<UncertaintyScenarioItem> UncertaintyScenarioList { get; set; }
@@ -79,8 +82,12 @@ namespace ViewModels
       this.UncertaintyGoalsModel = new UncertaintyGoalsModel(context);
 
       string tmpErrorMsg = "";
-      this.SomethingWrongWithPlan = this.UncertaintyGoalsModel.ValidateContext(ref tmpErrorMsg);
+      string tmpWarningMsg= "";
+      this.SomethingWrongWithPlan = this.UncertaintyGoalsModel.ValidateContext(ref tmpErrorMsg, ref tmpWarningMsg);
       this.ErrorMsg = tmpErrorMsg;
+      this.WarningMsg = tmpWarningMsg;
+
+      this.MinMaxRobustDosePlansCanBeCreated = String.IsNullOrEmpty(this.WarningMsg);
 
       this.ClinicalGoalList = ClinicalGoalItem.CreateClinicalGoalItems(this.context.PlanSetup);
       this.UncertaintyScenarioList = UncertaintyScenarioItem.CreateUncertaintyScenarioItems(this.context.PlanSetup);
@@ -89,6 +96,7 @@ namespace ViewModels
       this.SaveCsv = false;
       this.SaveJson = false;
       this.SaveAndShowHtml = true;
+      this.CreateMinMaxRobustDosePlans = false;
 
       CalculateCmd = new DelegateCommand(OnCalculate);
       AboutCmd = new DelegateCommand(OnAbout);
@@ -131,6 +139,11 @@ namespace ViewModels
         });
 
       System.Diagnostics.Process.Start(this.UncertaintyGoalsModel.GetHtmlfileFullPath());
+
+      if (this.MinMaxRobustDosePlansCanBeCreated && this.CreateMinMaxRobustDosePlans)
+      {
+        this.UncertaintyGoalsModel.CreateRobustMinMaxDosePlans();
+      }
     }
 
     private void OnSelectSavePath()

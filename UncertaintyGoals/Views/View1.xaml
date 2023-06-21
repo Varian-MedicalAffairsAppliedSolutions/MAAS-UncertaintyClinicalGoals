@@ -15,6 +15,7 @@
 
   <Grid>
     <Grid.RowDefinitions>
+      <RowDefinition Height="auto"/>
       <RowDefinition />
       <RowDefinition />
       <RowDefinition />
@@ -22,10 +23,10 @@
       <RowDefinition />
       <RowDefinition />
       <RowDefinition />
+      <RowDefinition Height="auto"/>
       <RowDefinition />
       <RowDefinition />
-      <RowDefinition />
-      <RowDefinition />
+      <RowDefinition Height="30"/> <!-- Matches the EULA box height in MainWindow.xaml -->
     </Grid.RowDefinitions>
 
     <Grid Grid.Row="0">
@@ -34,8 +35,13 @@
         <ColumnDefinition Width="*"/>
       </Grid.ColumnDefinitions>
 
-      <Label Grid.Column="0" Content="{Binding ErrorMsg, FallbackValue=ErrorMessages}" 
+      <StackPanel Grid.Column="0">
+        <Label Content="{Binding ErrorMsg, FallbackValue=ErrorMessages}" 
              FontSize="16" Foreground="OrangeRed"/>
+        <Label Content="{Binding WarningMsg, FallbackValue=WarningMessages}" 
+             FontSize="16" Foreground="Orange"/>
+      </StackPanel>
+      
       <Button Grid.Column="1" Margin="10, 15" Command="{Binding AboutCmd}">About</Button>
     </Grid>
 
@@ -70,7 +76,7 @@
       </StackPanel>
     </Grid>
 
-    <CheckBox Grid.Row="6" Content="Save and Show HTML" FontSize="12" Margin="5 10 0 0"
+    <CheckBox Grid.Row="6" Content="Save and Show HTML Report" FontSize="12" Margin="5 10 0 0"
               HorizontalAlignment="Left"
               FlowDirection="RightToLeft"
               IsChecked="{Binding Path=SaveAndShowHtml, Mode=TwoWay}" >
@@ -105,7 +111,17 @@
       </Button>
     </StackPanel>
 
-    <Grid Grid.Row="9" ToolTip="{Binding ErrorMessage}">
+    <CheckBox Grid.Row="9" Content="Generate Min/Max Robust Dose Plans" FontSize="12" Margin="5 10 0 0"
+              HorizontalAlignment="Left"
+              FlowDirection="RightToLeft"
+              IsEnabled="{Binding Path=MinMaxRobustDosePlansCanBeCreated}"
+              IsChecked="{Binding Path=CreateMinMaxRobustDosePlans, Mode=TwoWay}" >
+      <CheckBox.LayoutTransform>
+        <ScaleTransform ScaleX="2" ScaleY="2" />
+      </CheckBox.LayoutTransform>
+    </CheckBox>
+    
+    <Grid Grid.Row="10" ToolTip="{Binding ErrorMessage}">
       <Button Grid.Row="8" Margin="30 10" FontSize="20"
               Command="{Binding CalculateCmd}" 
             IsEnabled="{Binding SomethingWrongWithPlan}">

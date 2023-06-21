@@ -27,9 +27,10 @@ namespace UncertaintyGoals.Models
       this.debugMode = debugMode;
     }
 
-    public bool ValidateContext(ref string errorMsg)
+    public bool ValidateContext(ref string errorMsg, ref string warningMsg)
     {
       errorMsg = "";
+      warningMsg = "";
 
       if (this.plan == null)
       {
@@ -46,7 +47,16 @@ namespace UncertaintyGoals.Models
 
         var uncertainties = this.plan.PlanUncertainties;
         if (uncertainties == null || uncertainties.Count(x => x.Dose != null) == 0)
-          errorMsg += "Plan containes no calculated Uncertainty Scenarios.\n";
+          errorMsg += "Plan contains no calculated Uncertainty Scenarios.\n";
+
+        try
+        {
+          context.Patient.BeginModifications();
+        }
+        catch
+        {
+          warningMsg += "Patient data modifications not allowed.\n";
+        }
       }
 
       return String.IsNullOrEmpty(errorMsg);
@@ -57,7 +67,8 @@ namespace UncertaintyGoals.Models
       this.writeToFileSettings = writeToFileSettings;
 
       string errorMsg = "";
-      if (!ValidateContext(ref errorMsg))
+      string warningMsg = "";
+      if (!ValidateContext(ref errorMsg, ref warningMsg))
       {
         MessageBox.Show(errorMsg + "Uncertainty Clinical Goals were not calculated.", "Calculation Failed");
         return;
@@ -340,6 +351,109 @@ namespace UncertaintyGoals.Models
 
     #endregion
 
+    #region Min/Max Robust Dose Plan Creation
+
+    public void CreateRobustMinMaxDosePlans()
+    {
+      Log.Information("Creating Robust Min/Max Dose Plans.");
+
+      string errorMsg = "";
+      string warningMsg = "";
+      if (!ValidateContext(ref errorMsg, ref warningMsg) || !String.IsNullOrEmpty(warningMsg))
+      {
+        MessageBox.Show(errorMsg + warningMsg + "Robust Min/Max doses were not created.", "Calculation Failed");
+        return;
+      }
+
+      try
+      {
+        var nominalDoseMatrixSizeXYZ = new Tuple<int, int, int>(plan.Dose.XSize, plan.Dose.YSize, plan.Dose.ZSize);
+
+        var minDosePlan = plan.Course.AddExternalPlanSetup(plan.StructureSet);
+        var maxDosePlan = plan.Course.AddExternalPlanSetup(plan.StructureSet);
+
+        var minDose = minDosePlan.CopyEvaluationDose(plan.Dose);
+        var maxDose = maxDosePlan.CopyEvaluationDose(plan.Dose);
+
+        Log.Information("Reading uncertainty doses");
+
+        int minDoseVoxelsReplaced = 0;
+        int maxDoseVoxelsReplaced = 0;
+        foreach (var planUncertainty in plan.PlanUncertainties)
+        {
+          if (planUncertainty.Dose != null)
+          {
+            Log.Information("Analyzing dose: " + planUncertainty.DisplayName);
+
+            // Check that the dose matrices have the same size
+            if (planUncertainty.Dose.XSize != nominalDoseMatrixSizeXYZ.Item1
+              || planUncertainty.Dose.YSize != nominalDoseMatrixSizeXYZ.Item2
+              || planUncertainty.Dose.ZSize != nominalDoseMatrixSizeXYZ.Item3)
+            {
+              errorMsg = "Nominal and Uncertainty dose matrices have different sizes. Exiting\n" +
+                String.Format("Nominal: {0}, {1}, {2}\n", nominalDoseMatrixSizeXYZ.Item1, nominalDoseMatrixSizeXYZ.Item2, nominalDoseMatrixSizeXYZ.Item3) +
+                String.Format("Uncertainty: {0}, {1}, {2}\n", planUncertainty.Dose.XSize, planUncertainty.Dose.YSize, planUncertainty.Dose.ZSize);
+
+              Log.Error(errorMsg);
+              throw new ApplicationException(errorMsg);
+            }
+
+            // Update min and max dose voxels
+            for (int planeIdx = 0; planeIdx < nominalDoseMatrixSizeXYZ.Item3; planeIdx++)
+            {
+              var voxels = new int[nominalDoseMatrixSizeXYZ.Item1, nominalDoseMatrixSizeXYZ.Item2];
+              planUncertainty.Dose.GetVoxels(planeIdx, voxels);
+
+              var minVoxels = new int[nominalDoseMatrixSizeXYZ.Item1, nominalDoseMatrixSizeXYZ.Item2];
+              minDose.GetVoxels(planeIdx, minVoxels);
+
+              var maxVoxels = new int[nominalDoseMatrixSizeXYZ.Item1, nominalDoseMatrixSizeXYZ.Item2];
+              maxDose.GetVoxels(planeIdx, maxVoxels);
+
+              for (int i = 0; i < nominalDoseMatrixSizeXYZ.Item1; i++)
+              {
+                for (int j = 0; j < nominalDoseMatrixSizeXYZ.Item2; j++)
+                {
+                  if (voxels[i, j] < minVoxels[i, j])
+                  {
+                    minVoxels[i, j] = voxels[i, j];
+                    minDoseVoxelsReplaced++;
+                  }
+
+                  if (voxels[i, j] > maxVoxels[i, j])
+                  {
+                    maxVoxels[i, j] = voxels[i, j];
+                    maxDoseVoxelsReplaced++;
+                  }
+                }
+              }
+
+              minDose.SetVoxels(planeIdx, minVoxels);
+              maxDose.SetVoxels(planeIdx, maxVoxels);
+            }
+          }
+        }
+
+        Log.Information("Setting prescription and normalization of voxel dose plans.");
+
+        minDosePlan.SetPrescription(plan.NumberOfFractions ?? 1, plan.DosePerFraction, plan.TreatmentPercentage);
+        maxDosePlan.SetPrescription(plan.NumberOfFractions ?? 1, plan.DosePerFraction, plan.TreatmentPercentage);
+
+        minDosePlan.PlanNormalizationValue = plan.PlanNormalizationValue;
+        maxDosePlan.PlanNormalizationValue = plan.PlanNormalizationValue;
+
+        string msg = "Created Min and Max voxel dose plans:\n" + "  Min: " + minDosePlan.Id + "\n  Max: " + maxDosePlan.Id;
+        Log.Information(msg);
+        MessageBox.Show(msg);
+      }
+      catch(Exception e)
+      {
+        Log.Error("Error: " + e.ToString());
+        MessageBox.Show(e.ToString() + "\n\nRobust Min/Max doses were not created.", "Calculation Failed");
+      }
+    }
+
+    #endregion
 
   }
 }
