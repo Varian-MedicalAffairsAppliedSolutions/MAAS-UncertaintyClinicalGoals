@@ -129,17 +129,25 @@
       <RequiredTargetFramework>4.0</RequiredTargetFramework>
     </Reference>
     <Reference Include="VMS.TPS.Common.Model.API">
-      <HintPath>D:\TPS\va\Main\Bin\Release64\VMS.TPS.Common.Model.API.dll</HintPath>
+      <HintPath>..\..\..\ESAPI dll\VMS.TPS.Common.Model.API.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="VMS.TPS.Common.Model.Types">
-      <HintPath>D:\TPS\va\Main\Bin\Release64\VMS.TPS.Common.Model.Types.dll</HintPath>
+      <HintPath>..\..\..\ESAPI dll\VMS.TPS.Common.Model.Types.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="WindowsBase" />
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
+    <Reference Include="EulaVerification, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\EulaVerification\EulaVerification\bin\Debug\EulaVerification.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="FlexibleMessageBox.cs" />
+    <Compile Include="Services\AppConfigHelper.cs" />
     <Compile Include="CustomWidgets\BindableRichTextBox.cs" />
     <Compile Include="Models\ListItems\UncertaintyScenarioItem.cs" />
     <Compile Include="Models\ListItems\ClinicalGoalItem.cs" />
@@ -189,6 +197,9 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="NoCompileVer\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Resources\qrcode.bmp" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

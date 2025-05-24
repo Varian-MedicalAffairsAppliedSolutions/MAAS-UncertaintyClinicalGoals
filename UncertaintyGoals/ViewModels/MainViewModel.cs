@@ -30,6 +30,29 @@ namespace ViewModels
       set { SetProperty(ref postText, value); }
     }
 
+    private bool isValidated;
+    public bool IsValidated
+    {
+      get { return isValidated; }
+      set 
+      { 
+        SetProperty(ref isValidated, value);
+        RaisePropertyChanged(nameof(ValidationBannerVisibility));
+        RaisePropertyChanged(nameof(WindowTitle));
+      }
+    }
+
+    // Property to control visibility of validation banners
+    public Visibility ValidationBannerVisibility
+    {
+      get { return IsValidated ? Visibility.Collapsed : Visibility.Visible; }
+    }
+
+    // Property for dynamic window title
+    public string WindowTitle
+    {
+      get { return IsValidated ? "UncertaintyClinicalGoals" : "UncertaintyClinicalGoals - NOT VALIDATED FOR CLINICAL USE"; }
+    }
 
     private void Hyperlink_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
     {
@@ -39,15 +62,13 @@ namespace ViewModels
       e.Handled = true;
     }
 
-
     public MainViewModel(ScriptContext context, bool isValidated)
     {
       MyHeader = $"PLAN: {context.PlanSetup.Id}";
+      IsValidated = isValidated;
 
       PostText = "";
-      if (!isValidated) { PostText += " *** Not Validated For Clinical Use ***"; }
-
+      if (!IsValidated) { PostText += " *** Not Validated For Clinical Use ***"; }
     }
-
   }
 }
