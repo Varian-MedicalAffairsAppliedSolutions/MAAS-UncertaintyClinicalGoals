@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<EulaConfig xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <AcceptedEulas>
+    <EulaEntry ProjectVersionKey="UncertaintyClinicalGoals_1.0.0" AccessCode="your-access-code-here" />
+  </AcceptedEulas>
+  <ApplicationSettings Validated="false" EULAAgreed="true" />
+</EulaConfig>
+
+<!-- 
+To hide the validation banners, manually change Validated="false" to Validated="true" in the ApplicationSettings element above.
+
+When Validated="false" (default):
+- Top banner shows: "* * * NOT VALIDATED FOR CLINICAL USE * * *"
+- Bottom banner shows: "* * * NOT VALIDATED FOR CLINICAL USE * * *"
+- Window title includes: "- NOT VALIDATED FOR CLINICAL USE"
+- PostText shows: "*** Not Validated For Clinical Use ***"
+
+When Validated="true":
+- Top banner is hidden
+- Bottom banner is hidden  
+- Window title shows only: "UncertaintyClinicalGoals"
+- PostText is empty
+--> 
