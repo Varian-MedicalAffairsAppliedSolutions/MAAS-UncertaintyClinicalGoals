@@ -11,98 +11,136 @@ on:
       dateInput:
         description: 'Expiration Date'
         required: true
-        default: '12/31/2027'
+        default: '6/1/2025'
 
 jobs:
   build:
     name: Build ESAPI Script - v16.1
     runs-on: windows-latest
+
     env:
-      GITHUB_WORKSPACE_PACKAGES_PATH: packages
       PROJECT_NAME: UncertaintyClinicalGoals
       PROJECT_ROOT: ${{ github.workspace }}\UncertaintyGoals
       CSPROJ_FILE_NAME: UncertaintyClinicalGoals.csproj
-      MAJOR_VERSION: 1
-      MINOR_VERSION: 0
-      PATCH_VERSION: 0
       BUILD_NUMBER: ${{ github.run_number }}
+      NUGET_PACKAGES_DIR: ${{ github.workspace }}\packages
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Ensure required tooling is available
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          Write-Host "Checking for MSBuild..."
+          $msbuildCandidates = @(
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe",
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe",
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\MSBuild.exe"
+          )
+
+          $msbuild = $msbuildCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $msbuild) {
+            throw "MSBuild not found on windows-latest runner."
+          }
+
+          Write-Host "Using MSBuild at: $msbuild"
+          "MSBUILD_PATH=$msbuild" >> $env:GITHUB_ENV
+
+          Write-Host "Checking for NuGet..."
+          $nuget = Get-Command nuget -ErrorAction Stop
+          Write-Host "Using NuGet at: $($nuget.Source)"
+
       - name: Get Current Date
         id: currentDate
         uses: Kaven-Universe/github-action-current-date-time@v1
         with:
           format: "MM/DD/YYYY"
 
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Setup NuGet.exe for use with actions
-        uses: NuGet/setup-nuget@v2
-        with:
-          nuget-version: latest
-
-      - name: Download Microsoft NETFramework ReferenceAssemblies for v4.6.1
-        run: nuget install Microsoft.NETFramework.ReferenceAssemblies.net461 -OutputDirectory packages
-
-      - name: Navigate to Workspace
-        run: cd $GITHUB_WORKSPACE
+      - name: Download Microsoft.NETFramework.ReferenceAssemblies for v4.6.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path "${{ env.NUGET_PACKAGES_DIR }}" | Out-Null
+          nuget install Microsoft.NETFramework.ReferenceAssemblies.net461 -OutputDirectory "${{ env.NUGET_PACKAGES_DIR }}"
 
       - name: Update AssemblyInfo.cs
         id: update_assembly_info
         shell: powershell
         run: |
+          $ErrorActionPreference = "Stop"
           .\.github\workflows\Update-AssemblyInfo.ps1 `
             -AssemblyInfoFilePath "${{ env.PROJECT_ROOT }}\Properties\AssemblyInfo.cs" `
             -ExpirationDate "${{ github.event.inputs.dateInput }}" `
             -BuildNumber ${{ env.BUILD_NUMBER }} `
-            -MajorVersion ${{ env.MAJOR_VERSION }} `
-            -MinorVersion ${{ env.MINOR_VERSION }} `
-            -PatchVersion ${{ env.PATCH_VERSION }}
+            -MajorVersion 1 `
+            -MinorVersion 0 `
+            -PatchVersion 0
 
-      - name: Download nuget packages
-        run: nuget install .\UncertaintyGoals\packages.config -OutputDirectory .\UncertaintyGoals\packages
-
-      - name: Add VIC GitHub NuGet repository
+      - name: Install project NuGet packages
         shell: powershell
         run: |
-          nuget source add `
-            -Name github `
-            -Source "https://nuget.pkg.github.com/Varian-MedicalAffairsAppliedSolutions/index.json" `
-            -UserName craman96 `
-            -Password "${{ secrets.GITHUB_TOKEN }}" `
-            -StorePasswordInClearText
+          $ErrorActionPreference = "Stop"
+          nuget install .\UncertaintyGoals\packages.config -OutputDirectory .\UncertaintyGoals\packages
+
+      - name: Add GitHub NuGet repository
+        if: ${{ secrets.GITHUB_TOKEN != '' }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $sourceExists = nuget list source | Select-String "github"
+          if (-not $sourceExists) {
+            nuget source add `
+              -Name github `
+              -Source "https://nuget.pkg.github.com/Varian-MedicalAffairsAppliedSolutions/index.json" `
+              -UserName "craman96" `
+              -Password "${{ secrets.GITHUB_TOKEN }}" `
+              -StorePasswordInClearText
+          }
 
       - name: Download ESAPI package
-        run: nuget install ESAPI -Version 16.1.0 -OutputDirectory .\packages
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          nuget install ESAPI -Version 16.1.0 -OutputDirectory "${{ env.NUGET_PACKAGES_DIR }}"
 
       - name: Restore NuGet packages
-        run: nuget restore .\UncertaintyGoals\UncertaintyClinicalGoals.csproj -PackagesDirectory .\packages
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          nuget restore .\UncertaintyGoals\UncertaintyClinicalGoals.csproj -PackagesDirectory "${{ env.NUGET_PACKAGES_DIR }}"
 
       - name: Update hint paths in the csproj file
         shell: powershell
         run: |
+          $ErrorActionPreference = "Stop"
           .\.github\workflows\Update-EsapiHintPaths.ps1 `
             -CsprojFilePath "${{ github.workspace }}\UncertaintyGoals" `
             -CsprojFileName "${{ env.CSPROJ_FILE_NAME }}" `
-            -PackagesPath ".\packages"
+            -PackagesPath "${{ env.NUGET_PACKAGES_DIR }}"
 
       - name: Build Solution
-        run: msbuild.exe .\UncertaintyGoals\UncertaintyClinicalGoals.csproj /nologo /nr:false /p:DeleteExistingFiles=True /p:platform="x64" /p:configuration="Release"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "${env:MSBUILD_PATH}" `
+            .\UncertaintyGoals\UncertaintyClinicalGoals.csproj `
+            /nologo /nr:false /p:DeleteExistingFiles=True /p:platform="x64" /p:configuration="Release"
 
-      - name: Zip
+      - name: Zip output
         id: zip_release
         shell: powershell
         run: |
-          $outputPath = "${{ github.workspace }}\V16.1-${{ steps.update_assembly_info.outputs.RELEASE_FILE_NAME }}.zip"
-          Get-ChildItem -Path "${{ github.workspace }}\UncertaintyGoals\bin\x64\Release\*" -Recurse |
-            Compress-Archive -DestinationPath $outputPath
-          "NORMALIZED_FILE_PATH=$outputPath" >> $env:GITHUB_OUTPUT
+          $ErrorActionPreference = "Stop"
+
+          $zipPath = "${{ github.workspace }}\V16.1-${{ steps.update_assembly_info.outputs.RELEASE_FILE_NAME }}.zip"
+          $releaseDir = "${{ github.workspace }}\UncertaintyGoals\bin\x64\Release"
+
+          Get-ChildItem -Path $releaseDir -Recurse | Compress-Archive -DestinationPath $zipPath
+          "NORMALIZED_FILE_PATH=$zipPath" >> $env:GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v2.0.9
