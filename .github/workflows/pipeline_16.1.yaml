@@ -11,83 +11,109 @@ on:
       dateInput:
         description: 'Expiration Date'
         required: true
-        default: '1/1/2024'
+        default: '12/31/2027'
 
 jobs:
   build:
     name: Build ESAPI Script - v16.1
-    runs-on: windows-2019
+    runs-on: windows-latest
     env:
       GITHUB_WORKSPACE_PACKAGES_PATH: packages
       PROJECT_NAME: UncertaintyClinicalGoals
+      PROJECT_ROOT: ${{ github.workspace }}\UncertaintyGoals
+      CSPROJ_FILE_NAME: UncertaintyClinicalGoals.csproj
       MAJOR_VERSION: 1
       MINOR_VERSION: 0
       PATCH_VERSION: 0
       BUILD_NUMBER: ${{ github.run_number }}
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
+      - name: Get Current Date
+        id: currentDate
+        uses: Kaven-Universe/github-action-current-date-time@v1
+        with:
+          format: "MM/DD/YYYY"
 
-    - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v1
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Navigate to Workspace
-      run: cd $GITHUB_WORKSPACE
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
 
-    - name: Update AssemblyInfo.cs
-      id: update_assembly_info
-      run: |
-        .\.github\workflows\Update-AssemblyInfo.ps1 `
-          -AssemblyInfoFilePath .\UncertaintyGoals\Properties\AssemblyInfo.cs `
-          -ExpirationDate "${{ github.event.inputs.dateInput }}" `
-          -MajorVersion ${{ env.MAJOR_VERSION }} `
-          -MinorVersion ${{ env.MINOR_VERSION }} `
-          -PatchVersion ${{ env.PATCH_VERSION }} `
-          -BuildNumber ${{ env.BUILD_NUMBER }}
-          
-    - name: Download nuget packages
-      run: nuget install .\UncertaintyGoals\packages.config -OutputDirectory .\UncertaintyGoals\packages
+      - name: Setup NuGet.exe for use with actions
+        uses: NuGet/setup-nuget@v2
+        with:
+          nuget-version: latest
 
-    - name: Download ESAPI package
-      run: nuget install ESAPI -Version 16.1.0 -OutputDirectory .\packages
-      
-    - name: List ESAPI package contents
-      shell: powershell
-      run: |
-        Write-Host "ESAPI package contents:"
-        Get-ChildItem -Path .\packages -Recurse | Where-Object { $_.Name -like "VMS.TPS*" } | Select-Object FullName
-      
-    - name: Restore NuGet packages
-      run: nuget restore .\UncertaintyGoals\UncertaintyClinicalGoals.csproj -PackagesDirectory .\packages
+      - name: Download Microsoft NETFramework ReferenceAssemblies for v4.6.1
+        run: nuget install Microsoft.NETFramework.ReferenceAssemblies.net461 -OutputDirectory packages
 
-    - name: Update hint paths in the csproj file
-      run: |
-        .\.github\workflows\Update-EsapiHintPaths.ps1 `
-          -CsprojFileName .\UncertaintyGoals\UncertaintyClinicalGoals.csproj `
-          -PackagesPath .\packages
+      - name: Navigate to Workspace
+        run: cd $GITHUB_WORKSPACE
 
-    - name: Build Solution
-      run: msbuild.exe .\UncertaintyGoals\UncertaintyClinicalGoals.csproj /nologo /nr:false /p:DeleteExistingFiles=True /p:platform="x64" /p:configuration="Debug"
+      - name: Update AssemblyInfo.cs
+        id: update_assembly_info
+        shell: powershell
+        run: |
+          .\.github\workflows\Update-AssemblyInfo.ps1 `
+            -AssemblyInfoFilePath "${{ env.PROJECT_ROOT }}\Properties\AssemblyInfo.cs" `
+            -ExpirationDate "${{ github.event.inputs.dateInput }}" `
+            -BuildNumber ${{ env.BUILD_NUMBER }} `
+            -MajorVersion ${{ env.MAJOR_VERSION }} `
+            -MinorVersion ${{ env.MINOR_VERSION }} `
+            -PatchVersion ${{ env.PATCH_VERSION }}
 
-    - name: Zip
-      run: |
-        Compress-Archive `
-          -Path "UncertaintyGoals\bin\Debug\*" `
-          -DestinationPath "${{ github.workspace }}/${{env.PROJECT_NAME}}${{ steps.update_assembly_info.outputs.RELEASE_FILE_NAME }}-EclipseV161.zip"
-    
-    - name: Create Release
-      uses: softprops/action-gh-release@v0.1.13
-      with:
-        name: ${{env.PROJECT_NAME}}${{ steps.update_assembly_info.outputs.RELEASE_NAME }}-EclipseV16.1
-        tag_name: ${{env.PROJECT_NAME}}${{ steps.update_assembly_info.outputs.RELEASE_NAME }}-EclipseV16.1
-        token: ${{ secrets.GITHUB_TOKEN }}
-        draft: false
-        prerelease: false
-        body: |
-          This is an official release of the **`${{ env.PROJECT_NAME }}`** project.
-          Supported Eclipse version: `v16.1`.
-          The generated dll is valid until `${{ github.event.inputs.dateInput }}`.
-        files: ${{ github.workspace }}/${{env.PROJECT_NAME}}${{ steps.update_assembly_info.outputs.RELEASE_FILE_NAME }}-EclipseV161.zip
+      - name: Download nuget packages
+        run: nuget install .\UncertaintyGoals\packages.config -OutputDirectory .\UncertaintyGoals\packages
+
+      - name: Add VIC GitHub NuGet repository
+        shell: powershell
+        run: |
+          nuget source add `
+            -Name github `
+            -Source "https://nuget.pkg.github.com/Varian-MedicalAffairsAppliedSolutions/index.json" `
+            -UserName craman96 `
+            -Password "${{ secrets.GITHUB_TOKEN }}" `
+            -StorePasswordInClearText
+
+      - name: Download ESAPI package
+        run: nuget install ESAPI -Version 16.1.0 -OutputDirectory .\packages
+
+      - name: Restore NuGet packages
+        run: nuget restore .\UncertaintyGoals\UncertaintyClinicalGoals.csproj -PackagesDirectory .\packages
+
+      - name: Update hint paths in the csproj file
+        shell: powershell
+        run: |
+          .\.github\workflows\Update-EsapiHintPaths.ps1 `
+            -CsprojFilePath "${{ github.workspace }}\UncertaintyGoals" `
+            -CsprojFileName "${{ env.CSPROJ_FILE_NAME }}" `
+            -PackagesPath ".\packages"
+
+      - name: Build Solution
+        run: msbuild.exe .\UncertaintyGoals\UncertaintyClinicalGoals.csproj /nologo /nr:false /p:DeleteExistingFiles=True /p:platform="x64" /p:configuration="Release"
+
+      - name: Zip
+        id: zip_release
+        shell: powershell
+        run: |
+          $outputPath = "${{ github.workspace }}\V16.1-${{ steps.update_assembly_info.outputs.RELEASE_FILE_NAME }}.zip"
+          Get-ChildItem -Path "${{ github.workspace }}\UncertaintyGoals\bin\x64\Release\*" -Recurse |
+            Compress-Archive -DestinationPath $outputPath
+          "NORMALIZED_FILE_PATH=$outputPath" >> $env:GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2.0.9
+        with:
+          name: ${{ env.PROJECT_NAME }}${{ steps.update_assembly_info.outputs.RELEASE_NAME }}-EclipseV16.1
+          tag_name: ${{ env.PROJECT_NAME }}${{ steps.update_assembly_info.outputs.RELEASE_NAME }}-EclipseV16.1
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: false
+          prerelease: false
+          body: |
+            This is an official release of the **`${{ env.PROJECT_NAME }}`** project.
+            Supported Eclipse version: `v16.1`.
+            The generated dll is valid until `${{ github.event.inputs.dateInput }}`, and generated on `${{ steps.currentDate.outputs.time }}`.
+          files: ${{ steps.zip_release.outputs.NORMALIZED_FILE_PATH }}
