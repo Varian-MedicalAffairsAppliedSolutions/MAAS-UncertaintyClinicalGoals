@@ -241,6 +241,9 @@ jobs:
           Set-AssemblyReference -Name 'System.Runtime.CompilerServices.Unsafe' `
             -Path "$env:PROJECT_ROOT\packages\System.Runtime.CompilerServices.Unsafe.6.0.0\lib\net461\System.Runtime.CompilerServices.Unsafe.dll" `
             -CopyLocal $true
+          Set-AssemblyReference -Name 'System.Runtime' `
+            -Path "$env:NET461_REFERENCE_ROOT\.NETFramework\v4.6.1\Facades\System.Runtime.dll" `
+            -CopyLocal $false
 
           foreach ($hint in $project.SelectNodes('//msb:Reference/msb:HintPath', $ns)) {
             $path = $hint.InnerText
