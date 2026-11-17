@@ -15,7 +15,6 @@ on:
 
 permissions:
   contents: write
-  packages: read
 
 jobs:
   build:
@@ -49,12 +48,27 @@ jobs:
         with:
           format: "MM/DD/YYYY"
 
-      - name: Download Microsoft.NETFramework.ReferenceAssemblies for v4.6.1
+      - name: Install .NET Framework 4.6.1 reference assemblies
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path "${{ env.NUGET_PACKAGES_DIR }}" | Out-Null
           nuget install Microsoft.NETFramework.ReferenceAssemblies.net461 -OutputDirectory "${{ env.NUGET_PACKAGES_DIR }}"
+
+          $refDir = Get-ChildItem "${{ env.NUGET_PACKAGES_DIR }}\Microsoft.NETFramework.ReferenceAssemblies.net461*" -Directory |
+            Select-Object -First 1
+
+          if (-not $refDir) {
+            throw "Could not find the Microsoft.NETFramework.ReferenceAssemblies.net461 package folder."
+          }
+
+          $target = Join-Path $refDir.FullName "build\.NETFramework\v4.6.1"
+          if (-not (Test-Path $target)) {
+            throw "Reference assemblies were not found under: $target"
+          }
+
+          "REFERENCE_ASSEMBLIES_PATH=$target" >> $env:GITHUB_ENV
+          Write-Host "Using reference assemblies at: $target"
 
       - name: Update AssemblyInfo.cs
         id: update_assembly_info
@@ -85,7 +99,7 @@ jobs:
           $token = "${{ secrets.GITHUB_TOKEN }}"
 
           if ([string]::IsNullOrWhiteSpace($token)) {
-            throw "GITHUB_TOKEN is empty. If your org blocks it for GitHub Packages, create a PAT secret like NUGET_GITHUB_TOKEN and replace the token below."
+            throw "GITHUB_TOKEN is empty. If your org blocks it for GitHub Packages, add a PAT secret like NUGET_GITHUB_TOKEN and replace the token below."
           }
 
           $existing = nuget sources list | Select-String -Pattern $sourceName
@@ -123,8 +137,15 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
+
           msbuild.exe .\UncertaintyGoals\UncertaintyClinicalGoals.csproj `
-            /nologo /nr:false /p:DeleteExistingFiles=True /p:platform="x64" /p:configuration="Release"
+            /nologo /nr:false `
+            /p:DeleteExistingFiles=True `
+            /p:platform="x64" `
+            /p:configuration="Release" `
+            /p:FrameworkPathOverride="$env:REFERENCE_ASSEMBLIES_PATH" `
+            /p:TargetFrameworkRootPath="$env:REFERENCE_ASSEMBLIES_PATH" `
+            /p:TargetFrameworkFallbackSearchPaths="$env:REFERENCE_ASSEMBLIES_PATH"
 
       - name: Zip output
         id: zip_release
