@@ -29,25 +29,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Ensure required tooling is available
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Verify build tools
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-
-          $msbuildCandidates = @(
-            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe",
-            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe",
-            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\MSBuild.exe"
-          )
-
-          $msbuild = $msbuildCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-          if (-not $msbuild) {
-            throw "MSBuild not found on windows-latest runner."
-          }
-
-          "MSBUILD_PATH=$msbuild" >> $env:GITHUB_ENV
-
-          Get-Command nuget | Out-Null
+          Get-Command msbuild | Format-List *
+          msbuild -version
 
       - name: Get Current Date
         id: currentDate
@@ -106,8 +96,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          & "${env:MSBUILD_PATH}" `
-            .\UncertaintyGoals\UncertaintyClinicalGoals.csproj `
+          msbuild.exe .\UncertaintyGoals\UncertaintyClinicalGoals.csproj `
             /nologo /nr:false /p:DeleteExistingFiles=True /p:platform="x64" /p:configuration="Release"
 
       - name: Zip output
