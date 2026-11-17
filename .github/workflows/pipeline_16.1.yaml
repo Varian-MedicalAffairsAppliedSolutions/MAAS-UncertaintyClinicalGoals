@@ -3,6 +3,11 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
 name: Build ESAPI Script - v16.1
 
 on:
@@ -11,7 +16,7 @@ on:
       dateInput:
         description: 'Expiration Date'
         required: true
-        default: '6/1/2025'
+        default: '12/31/2027'
 
 permissions:
   contents: write
@@ -77,7 +82,7 @@ jobs:
             Select-Object -First 1
 
           if (-not $refDir) {
-            throw "Could not locate the Microsoft.NETFramework.ReferenceAssemblies.net461 package."
+            throw "Could not locate Microsoft.NETFramework.ReferenceAssemblies.net461 package."
           }
 
           $target = Join-Path $refDir.FullName "build\.NETFramework\v4.6.1"
@@ -118,7 +123,7 @@ jobs:
           $token = "${{ secrets.NUGET_GITHUB_TOKEN }}"
 
           if ([string]::IsNullOrWhiteSpace($token)) {
-            throw "Missing secret: NUGET_GITHUB_TOKEN. Create a token with read:packages permission and access to the Varian package source."
+            throw "Missing secret: NUGET_GITHUB_TOKEN. Create a PAT with read:packages access to the Varian package source."
           }
 
           $existing = nuget sources list | Select-String -Pattern $sourceName
@@ -154,6 +159,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
+
           .\.github\workflows\Update-EsapiHintPaths.ps1 `
             -CsprojFilePath "${{ github.workspace }}\UncertaintyGoals" `
             -CsprojFileName "${{ env.CSPROJ_FILE_NAME }}" `
