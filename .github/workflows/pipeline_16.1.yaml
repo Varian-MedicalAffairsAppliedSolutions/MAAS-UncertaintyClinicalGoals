@@ -34,7 +34,6 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          Write-Host "Checking for MSBuild..."
           $msbuildCandidates = @(
             "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe",
             "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe",
@@ -46,12 +45,9 @@ jobs:
             throw "MSBuild not found on windows-latest runner."
           }
 
-          Write-Host "Using MSBuild at: $msbuild"
           "MSBUILD_PATH=$msbuild" >> $env:GITHUB_ENV
 
-          Write-Host "Checking for NuGet..."
-          $nuget = Get-Command nuget -ErrorAction Stop
-          Write-Host "Using NuGet at: $($nuget.Source)"
+          Get-Command nuget | Out-Null
 
       - name: Get Current Date
         id: currentDate
@@ -84,22 +80,6 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           nuget install .\UncertaintyGoals\packages.config -OutputDirectory .\UncertaintyGoals\packages
-
-      - name: Add GitHub NuGet repository
-        if: ${{ secrets.GITHUB_TOKEN != '' }}
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          $sourceExists = nuget list source | Select-String "github"
-          if (-not $sourceExists) {
-            nuget source add `
-              -Name github `
-              -Source "https://nuget.pkg.github.com/Varian-MedicalAffairsAppliedSolutions/index.json" `
-              -UserName "craman96" `
-              -Password "${{ secrets.GITHUB_TOKEN }}" `
-              -StorePasswordInClearText
-          }
 
       - name: Download ESAPI package
         shell: powershell
