@@ -13,6 +13,10 @@ on:
         required: true
         default: '6/1/2025'
 
+permissions:
+  contents: write
+  packages: read
+
 jobs:
   build:
     name: Build ESAPI Script - v16.1
@@ -70,6 +74,29 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           nuget install .\UncertaintyGoals\packages.config -OutputDirectory .\UncertaintyGoals\packages
+
+      - name: Add GitHub NuGet repository
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $sourceName = "github"
+          $sourceUrl = "https://nuget.pkg.github.com/Varian-MedicalAffairsAppliedSolutions/index.json"
+          $token = "${{ secrets.GITHUB_TOKEN }}"
+
+          if ([string]::IsNullOrWhiteSpace($token)) {
+            throw "GITHUB_TOKEN is empty. If your org blocks it for GitHub Packages, create a PAT secret like NUGET_GITHUB_TOKEN and replace the token below."
+          }
+
+          $existing = nuget sources list | Select-String -Pattern $sourceName
+          if (-not $existing) {
+            nuget source add `
+              -Name $sourceName `
+              -Source $sourceUrl `
+              -UserName "github-actions" `
+              -Password $token `
+              -StorePasswordInClearText
+          }
 
       - name: Download ESAPI package
         shell: powershell
