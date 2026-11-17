@@ -14,8 +14,9 @@ on:
   workflow_dispatch:
     inputs:
       dateInput:
-        description: 'Expiration Date'
+        description: Expiration date (M/d/yyyy)
         required: true
+        type: string
         default: '12/31/2027'
 
 permissions:
@@ -25,183 +26,300 @@ jobs:
   build:
     name: Build ESAPI Script - v16.1
     runs-on: windows-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        shell: pwsh
 
     env:
       PROJECT_NAME: UncertaintyClinicalGoals
       PROJECT_ROOT: ${{ github.workspace }}\UncertaintyGoals
       CSPROJ_FILE_NAME: UncertaintyClinicalGoals.csproj
-      BUILD_NUMBER: ${{ github.run_number }}
       NUGET_PACKAGES_DIR: ${{ github.workspace }}\packages
+      EULA_ROOT: ${{ github.workspace }}\dependencies\EulaVerification\EulaVerification
+      BUILD_NUMBER: ${{ github.run_number }}
+      EXPIRATION_DATE: ${{ inputs.dateInput }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Locate MSBuild without setup-msbuild action
-        shell: powershell
+      - name: Validate configuration and locate build tools
+        env:
+          EULA_REPO_TOKEN: ${{ secrets.EULA_REPO_TOKEN }}
+          NUGET_GITHUB_TOKEN: ${{ secrets.NUGET_GITHUB_TOKEN }}
         run: |
-          $ErrorActionPreference = "Stop"
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('EULA_REPO_TOKEN', 'NUGET_GITHUB_TOKEN')) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Missing repository secret: $name"
+            }
+          }
+          [datetime]::ParseExact(
+            $env:EXPIRATION_DATE, 'M/d/yyyy',
+            [System.Globalization.CultureInfo]::InvariantCulture
+          ) | Out-Null
 
+          Get-Command nuget, gh -ErrorAction Stop | Out-Null
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          if (-not (Test-Path $vswhere)) {
-            $vswhere = "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path -LiteralPath $vswhere)) {
+            throw "vswhere.exe was not found."
           }
-
-          if (-not (Test-Path $vswhere)) {
-            throw "vswhere.exe was not found. Visual Studio is not installed on the runner."
+          $installation = & $vswhere -latest -products '*' `
+            -requires Microsoft.Component.MSBuild -property installationPath
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($installation)) {
+            throw "Could not locate Visual Studio with MSBuild."
           }
-
-          $installPath = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
-          if (-not $installPath) {
-            throw "Could not detect a Visual Studio installation with MSBuild."
+          $msbuild = Join-Path $installation 'MSBuild\Current\Bin\MSBuild.exe'
+          if (-not (Test-Path -LiteralPath $msbuild)) {
+            throw "MSBuild.exe was not found: $msbuild"
           }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8 `
+            -Value "MSBUILD_PATH=$msbuild"
 
-          $msbuild = Join-Path $installPath "MSBuild\Current\Bin\MSBuild.exe"
-          if (-not (Test-Path $msbuild)) {
-            throw "MSBuild.exe was not found under $installPath"
-          }
-
-          "MSBUILD_PATH=$msbuild" >> $env:GITHUB_ENV
-          Write-Host "Using MSBuild at: $msbuild"
-
-      - name: Get Current Date
-        id: currentDate
-        uses: Kaven-Universe/github-action-current-date-time@v1
+      - name: Checkout application
+        uses: actions/checkout@v5
         with:
-          format: "MM/DD/YYYY"
+          persist-credentials: false
 
-      - name: Install .NET Framework 4.6.1 reference assemblies
-        shell: powershell
+      - name: Checkout EULA verification library
+        uses: actions/checkout@v5
+        with:
+          repository: Varian-MedicalAffairsAppliedSolutions/MAAS-EulaVerification
+          ref: master
+          token: ${{ secrets.EULA_REPO_TOKEN }}
+          path: dependencies\EulaVerification
+          persist-credentials: false
+
+      - name: Install .NET Framework reference assemblies
         run: |
-          $ErrorActionPreference = "Stop"
-
-          New-Item -ItemType Directory -Force -Path "${{ env.NUGET_PACKAGES_DIR }}" | Out-Null
-          nuget install Microsoft.NETFramework.ReferenceAssemblies.net461 -OutputDirectory "${{ env.NUGET_PACKAGES_DIR }}"
-
-          $refDir = Get-ChildItem "${{ env.NUGET_PACKAGES_DIR }}\Microsoft.NETFramework.ReferenceAssemblies.net461*" -Directory |
-            Select-Object -First 1
-
-          if (-not $refDir) {
-            throw "Could not locate Microsoft.NETFramework.ReferenceAssemblies.net461 package."
+          $ErrorActionPreference = 'Stop'
+          foreach ($framework in @('net452', 'net461')) {
+            $package = "Microsoft.NETFramework.ReferenceAssemblies.$framework"
+            nuget install $package -Version 1.0.3 `
+              -Source 'https://api.nuget.org/v3/index.json' `
+              -OutputDirectory "$env:NUGET_PACKAGES_DIR" -NonInteractive
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to install $package."
+            }
+            $root = Join-Path $env:NUGET_PACKAGES_DIR "$package.1.0.3\build"
+            $version = if ($framework -eq 'net452') { 'v4.5.2' } else { 'v4.6.1' }
+            if (-not (Test-Path -LiteralPath "$root\.NETFramework\$version\mscorlib.dll")) {
+              throw "Reference assemblies were not found for $version."
+            }
+            Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8 `
+              -Value "$($framework.ToUpperInvariant())_REFERENCE_ROOT=$root"
           }
 
-          $target = Join-Path $refDir.FullName "build\.NETFramework\v4.6.1"
-          if (-not (Test-Path $target)) {
-            throw "Reference assemblies were not found under: $target"
+      - name: Restore application NuGet packages
+        run: |
+          $ErrorActionPreference = 'Stop'
+          nuget restore "$env:PROJECT_ROOT\packages.config" `
+            -PackagesDirectory "$env:PROJECT_ROOT\packages" `
+            -Source 'https://api.nuget.org/v3/index.json' -NonInteractive
+          if ($LASTEXITCODE -ne 0) {
+            throw "Application NuGet restore failed."
           }
 
-          "REFERENCE_ASSEMBLIES_PATH=$target" >> $env:GITHUB_ENV
-          Write-Host "Using reference assemblies at: $target"
+      - name: Download ESAPI 16.1
+        env:
+          NUGET_GITHUB_TOKEN: ${{ secrets.NUGET_GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $configPath = Join-Path $env:RUNNER_TEMP 'esapi.nuget.config'
+          @'
+          <configuration>
+            <packageSources>
+              <clear />
+              <add key="VarianESAPI" value="https://nuget.pkg.github.com/Varian-MedicalAffairsAppliedSolutions/index.json" />
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+            </packageSources>
+          </configuration>
+          '@ | Set-Content -LiteralPath $configPath -Encoding utf8
+          $env:NuGetPackageSourceCredentials_VarianESAPI = `
+            "Username=$env:GITHUB_ACTOR;Password=$env:NUGET_GITHUB_TOKEN;ValidAuthenticationTypes=Basic"
+          nuget install ESAPI -Version 16.1.0 `
+            -ConfigFile $configPath `
+            -OutputDirectory "$env:NUGET_PACKAGES_DIR" -NonInteractive
+          if ($LASTEXITCODE -ne 0) {
+            throw "ESAPI download failed. Check NUGET_GITHUB_TOKEN package access and organization authorization."
+          }
 
-      - name: Update AssemblyInfo.cs
+      - name: Build EULA verification library
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:MSBUILD_PATH" "$env:EULA_ROOT\EulaVerification.csproj" `
+            /nologo /nr:false /p:Configuration=Release /p:Platform=AnyCPU `
+            "/p:TargetFrameworkRootPath=$env:NET452_REFERENCE_ROOT" `
+            "/p:FrameworkPathOverride=$env:NET452_REFERENCE_ROOT\.NETFramework\v4.5.2"
+          if ($LASTEXITCODE -ne 0) {
+            throw "EULA verification library build failed."
+          }
+          if (-not (Test-Path -LiteralPath "$env:EULA_ROOT\bin\Release\EulaVerification.dll")) {
+            throw "The EULA verification DLL was not produced."
+          }
+
+      - name: Update assembly version and expiration
         id: update_assembly_info
-        shell: powershell
         run: |
-          $ErrorActionPreference = "Stop"
-
+          $ErrorActionPreference = 'Stop'
           .\.github\workflows\Update-AssemblyInfo.ps1 `
-            -AssemblyInfoFilePath "${{ env.PROJECT_ROOT }}\Properties\AssemblyInfo.cs" `
-            -ExpirationDate "${{ github.event.inputs.dateInput }}" `
-            -BuildNumber ${{ env.BUILD_NUMBER }} `
-            -MajorVersion 1 `
-            -MinorVersion 0 `
-            -PatchVersion 0
+            -AssemblyInfoFilePath "$env:PROJECT_ROOT\Properties\AssemblyInfo.cs" `
+            -ExpirationDate "$env:EXPIRATION_DATE" `
+            -BuildNumber "$env:BUILD_NUMBER" `
+            -MajorVersion 1 -MinorVersion 0 -PatchVersion 0
 
-      - name: Install project NuGet packages
-        shell: powershell
+      - name: Repair and validate application assembly references
         run: |
-          $ErrorActionPreference = "Stop"
-          nuget install .\UncertaintyGoals\packages.config -OutputDirectory .\UncertaintyGoals\packages
-
-      - name: Add GitHub NuGet repository using PAT
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          $sourceName = "github"
-          $sourceUrl = "https://nuget.pkg.github.com/Varian-MedicalAffairsAppliedSolutions/index.json"
-          $token = "${{ secrets.NUGET_GITHUB_TOKEN }}"
-
-          if ([string]::IsNullOrWhiteSpace($token)) {
-            throw "Missing secret: NUGET_GITHUB_TOKEN. Create a PAT with read:packages access to the Varian package source."
+          $ErrorActionPreference = 'Stop'
+          $projectPath = Join-Path $env:PROJECT_ROOT $env:CSPROJ_FILE_NAME
+          [xml]$project = Get-Content -LiteralPath $projectPath -Raw
+          $ns = New-Object System.Xml.XmlNamespaceManager($project.NameTable)
+          $ns.AddNamespace('msb', $project.DocumentElement.NamespaceURI)
+          $referenceGroup = $project.SelectSingleNode(
+            '/msb:Project/msb:ItemGroup[msb:Reference]', $ns
+          )
+          if ($null -eq $referenceGroup) {
+            throw "The application project has no assembly reference group."
           }
 
-          $existing = nuget sources list | Select-String -Pattern $sourceName
-          if (-not $existing) {
-            nuget source add `
-              -Name $sourceName `
-              -Source $sourceUrl `
-              -UserName "github-actions" `
-              -Password $token `
-              -StorePasswordInClearText
-          } else {
-            nuget source update `
-              -Name $sourceName `
-              -Source $sourceUrl `
-              -UserName "github-actions" `
-              -Password $token `
-              -StorePasswordInClearText
+          # The current source uses neither of these obsolete references.
+          $references = @($project.SelectNodes('//msb:Reference', $ns))
+          foreach ($reference in $references) {
+            $name = ($reference.GetAttribute('Include') -split ',')[0]
+            if ($name -in @('Microsoft.Practices.ServiceLocation', 'System.Windows.Interactivity')) {
+              $reference.ParentNode.RemoveChild($reference) | Out-Null
+            }
           }
 
-      - name: Download ESAPI package
-        shell: powershell
+          function Set-AssemblyReference {
+            param([string]$Name, [string]$Path, [bool]$CopyLocal)
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+              throw "Required assembly was not found: $Path"
+            }
+            $existingReferences = @($project.SelectNodes('//msb:Reference', $ns) |
+              Where-Object { ($_.GetAttribute('Include') -split ',')[0] -eq $Name })
+            if ($existingReferences.Count -gt 1) {
+              throw "Duplicate assembly reference: $Name"
+            }
+            if ($existingReferences.Count -eq 1) {
+              $reference = $existingReferences[0]
+            } else {
+              $reference = $project.CreateElement('Reference', $project.DocumentElement.NamespaceURI)
+              $referenceGroup.AppendChild($reference) | Out-Null
+            }
+            $reference.SetAttribute('Include', $Name)
+            $metadata = @{
+              HintPath = $Path
+              SpecificVersion = 'False'
+              Private = $CopyLocal.ToString()
+            }
+            foreach ($key in $metadata.Keys) {
+              $element = $reference.SelectSingleNode("msb:$key", $ns)
+              if ($null -eq $element) {
+                $element = $project.CreateElement($key, $project.DocumentElement.NamespaceURI)
+                $reference.AppendChild($element) | Out-Null
+              }
+              $element.InnerText = $metadata[$key]
+            }
+          }
+
+          $esapiPackage = Join-Path $env:NUGET_PACKAGES_DIR 'ESAPI.16.1.0'
+          $apiFiles = @(Get-ChildItem -LiteralPath $esapiPackage -Recurse -File `
+            -Filter 'VMS.TPS.Common.Model.API.dll' |
+            Where-Object {
+              Test-Path -LiteralPath (Join-Path $_.DirectoryName 'VMS.TPS.Common.Model.Types.dll')
+            })
+          if ($apiFiles.Count -ne 1) {
+            throw "Expected one ESAPI assembly pair inside $esapiPackage; found $($apiFiles.Count)."
+          }
+          $esapiDirectory = $apiFiles[0].DirectoryName
+          Set-AssemblyReference -Name 'VMS.TPS.Common.Model.API' `
+            -Path "$esapiDirectory\VMS.TPS.Common.Model.API.dll" -CopyLocal $false
+          Set-AssemblyReference -Name 'VMS.TPS.Common.Model.Types' `
+            -Path "$esapiDirectory\VMS.TPS.Common.Model.Types.dll" -CopyLocal $false
+          Set-AssemblyReference -Name 'EulaVerification' `
+            -Path "$env:EULA_ROOT\bin\Release\EulaVerification.dll" -CopyLocal $true
+          Set-AssemblyReference -Name 'System.Runtime.CompilerServices.Unsafe' `
+            -Path "$env:PROJECT_ROOT\packages\System.Runtime.CompilerServices.Unsafe.6.0.0\lib\net461\System.Runtime.CompilerServices.Unsafe.dll" `
+            -CopyLocal $true
+
+          foreach ($hint in $project.SelectNodes('//msb:Reference/msb:HintPath', $ns)) {
+            $path = $hint.InnerText
+            if (-not [System.IO.Path]::IsPathRooted($path)) {
+              $path = Join-Path $env:PROJECT_ROOT $path
+            }
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Unresolved project HintPath: $path"
+            }
+          }
+          $project.Save($projectPath)
+
+      - name: Build application
         run: |
-          $ErrorActionPreference = "Stop"
-          nuget install ESAPI -Version 16.1.0 -OutputDirectory "${{ env.NUGET_PACKAGES_DIR }}"
+          $ErrorActionPreference = 'Stop'
+          & "$env:MSBUILD_PATH" "$env:PROJECT_ROOT\$env:CSPROJ_FILE_NAME" `
+            /nologo /nr:false /p:Configuration=Release /p:Platform=x64 `
+            "/p:OutputPath=$env:PROJECT_ROOT\bin\x64\Release" `
+            "/p:TargetFrameworkRootPath=$env:NET461_REFERENCE_ROOT" `
+            "/p:FrameworkPathOverride=$env:NET461_REFERENCE_ROOT\.NETFramework\v4.6.1"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Application build failed."
+          }
 
-      - name: Restore NuGet packages
-        shell: powershell
+      - name: Package release
+        id: package
+        env:
+          RELEASE_STEM: ${{ steps.update_assembly_info.outputs.RELEASE_FILE_NAME }}
         run: |
-          $ErrorActionPreference = "Stop"
-          nuget restore .\UncertaintyGoals\UncertaintyClinicalGoals.csproj -PackagesDirectory "${{ env.NUGET_PACKAGES_DIR }}"
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:RELEASE_STEM)) {
+            throw "The assembly update step did not produce a release filename."
+          }
+          $output = Join-Path $env:PROJECT_ROOT 'bin\x64\Release'
+          foreach ($file in @('UncertaintyClinicalGoals.esapi.dll', 'EulaVerification.dll')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $output $file) -PathType Leaf)) {
+              throw "Required release file is missing: $file"
+            }
+          }
+          $tag = "$env:PROJECT_NAME$env:RELEASE_STEM-EclipseV16.1"
+          $zip = Join-Path $env:GITHUB_WORKSPACE "$env:PROJECT_NAME$env:RELEASE_STEM-EclipseV161.zip"
+          Compress-Archive -Path "$output\*" -DestinationPath $zip -Force
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Value "tag=$tag"
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Value "zip=$zip"
 
-      - name: Update hint paths in the csproj file
-        shell: powershell
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.package.outputs.tag }}
+          RELEASE_ZIP: ${{ steps.package.outputs.zip }}
         run: |
-          $ErrorActionPreference = "Stop"
+          $ErrorActionPreference = 'Stop'
+          $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.txt'
+          @"
+          Build of **$env:PROJECT_NAME** for Eclipse **v16.1**.
+          Expiration date: **$env:EXPIRATION_DATE**.
+          Built on $(Get-Date -Format 'yyyy-MM-dd').
+          "@ | Set-Content -LiteralPath $notesFile -Encoding utf8
 
-          .\.github\workflows\Update-EsapiHintPaths.ps1 `
-            -CsprojFilePath "${{ github.workspace }}\UncertaintyGoals" `
-            -CsprojFileName "${{ env.CSPROJ_FILE_NAME }}" `
-            -PackagesPath "${{ env.NUGET_PACKAGES_DIR }}"
-
-      - name: Build Solution
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          & "$env:MSBUILD_PATH" `
-            .\UncertaintyGoals\UncertaintyClinicalGoals.csproj `
-            /nologo /nr:false `
-            /p:DeleteExistingFiles=True `
-            /p:platform="x64" `
-            /p:configuration="Release" `
-            /p:FrameworkPathOverride="$env:REFERENCE_ASSEMBLIES_PATH" `
-            /p:TargetFrameworkRootPath="$env:REFERENCE_ASSEMBLIES_PATH" `
-            /p:TargetFrameworkFallbackSearchPaths="$env:REFERENCE_ASSEMBLIES_PATH"
-
-      - name: Zip output
-        id: zip_release
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          $zipPath = "${{ github.workspace }}\V16.1-${{ steps.update_assembly_info.outputs.RELEASE_FILE_NAME }}.zip"
-          $releaseDir = "${{ github.workspace }}\UncertaintyGoals\bin\x64\Release"
-
-          Get-ChildItem -Path $releaseDir -Recurse | Compress-Archive -DestinationPath $zipPath
-          "NORMALIZED_FILE_PATH=$zipPath" >> $env:GITHUB_OUTPUT
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2.0.9
-        with:
-          name: ${{ env.PROJECT_NAME }}${{ steps.update_assembly_info.outputs.RELEASE_NAME }}-EclipseV16.1
-          tag_name: ${{ env.PROJECT_NAME }}${{ steps.update_assembly_info.outputs.RELEASE_NAME }}-EclipseV16.1
-          token: ${{ secrets.GITHUB_TOKEN }}
-          draft: false
-          prerelease: false
-          body: |
-            This is an official release of the **`${{ env.PROJECT_NAME }}`** project.
-            Supported Eclipse version: `v16.1`.
-            The generated dll is valid until `${{ github.event.inputs.dateInput }}`, and generated on `${{ steps.currentDate.outputs.time }}`.
-          files: ${{ steps.zip_release.outputs.NORMALIZED_FILE_PATH }}
+          $tags = @(& gh api --paginate `
+            "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name')
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not list repository releases."
+          }
+          if ($tags -notcontains $env:RELEASE_TAG) {
+            gh release create "$env:RELEASE_TAG" `
+              --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" `
+              --title "$env:RELEASE_TAG" --notes-file "$notesFile" --draft
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not create the draft release."
+            }
+          }
+          gh release upload "$env:RELEASE_TAG" "$env:RELEASE_ZIP" `
+            --repo "$env:GITHUB_REPOSITORY" --clobber
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release asset upload failed."
+          }
+          gh release edit "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" `
+            --title "$env:RELEASE_TAG" --notes-file "$notesFile" --draft=false
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not publish the release."
+          }
