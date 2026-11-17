@@ -32,15 +32,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Verify build tools
+      - name: Locate MSBuild without setup-msbuild action
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          Get-Command msbuild | Format-List *
-          msbuild -version
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) {
+            $vswhere = "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe"
+          }
+
+          if (-not (Test-Path $vswhere)) {
+            throw "vswhere.exe was not found. Visual Studio is not installed on the runner."
+          }
+
+          $installPath = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
+          if (-not $installPath) {
+            throw "Could not detect a Visual Studio installation with MSBuild."
+          }
+
+          $msbuild = Join-Path $installPath "MSBuild\Current\Bin\MSBuild.exe"
+          if (-not (Test-Path $msbuild)) {
+            throw "MSBuild.exe was not found under $installPath"
+          }
+
+          "MSBUILD_PATH=$msbuild" >> $env:GITHUB_ENV
+          Write-Host "Using MSBuild at: $msbuild"
 
       - name: Get Current Date
         id: currentDate
@@ -52,6 +69,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
+
           New-Item -ItemType Directory -Force -Path "${{ env.NUGET_PACKAGES_DIR }}" | Out-Null
           nuget install Microsoft.NETFramework.ReferenceAssemblies.net461 -OutputDirectory "${{ env.NUGET_PACKAGES_DIR }}"
 
@@ -59,7 +77,7 @@ jobs:
             Select-Object -First 1
 
           if (-not $refDir) {
-            throw "Could not find the Microsoft.NETFramework.ReferenceAssemblies.net461 package folder."
+            throw "Could not locate the Microsoft.NETFramework.ReferenceAssemblies.net461 package."
           }
 
           $target = Join-Path $refDir.FullName "build\.NETFramework\v4.6.1"
@@ -75,6 +93,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
+
           .\.github\workflows\Update-AssemblyInfo.ps1 `
             -AssemblyInfoFilePath "${{ env.PROJECT_ROOT }}\Properties\AssemblyInfo.cs" `
             -ExpirationDate "${{ github.event.inputs.dateInput }}" `
@@ -89,22 +108,29 @@ jobs:
           $ErrorActionPreference = "Stop"
           nuget install .\UncertaintyGoals\packages.config -OutputDirectory .\UncertaintyGoals\packages
 
-      - name: Add GitHub NuGet repository
+      - name: Add GitHub NuGet repository using PAT
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
 
           $sourceName = "github"
           $sourceUrl = "https://nuget.pkg.github.com/Varian-MedicalAffairsAppliedSolutions/index.json"
-          $token = "${{ secrets.GITHUB_TOKEN }}"
+          $token = "${{ secrets.NUGET_GITHUB_TOKEN }}"
 
           if ([string]::IsNullOrWhiteSpace($token)) {
-            throw "GITHUB_TOKEN is empty. If your org blocks it for GitHub Packages, add a PAT secret like NUGET_GITHUB_TOKEN and replace the token below."
+            throw "Missing secret: NUGET_GITHUB_TOKEN. Create a token with read:packages permission and access to the Varian package source."
           }
 
           $existing = nuget sources list | Select-String -Pattern $sourceName
           if (-not $existing) {
             nuget source add `
+              -Name $sourceName `
+              -Source $sourceUrl `
+              -UserName "github-actions" `
+              -Password $token `
+              -StorePasswordInClearText
+          } else {
+            nuget source update `
               -Name $sourceName `
               -Source $sourceUrl `
               -UserName "github-actions" `
@@ -138,7 +164,8 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          msbuild.exe .\UncertaintyGoals\UncertaintyClinicalGoals.csproj `
+          & "$env:MSBUILD_PATH" `
+            .\UncertaintyGoals\UncertaintyClinicalGoals.csproj `
             /nologo /nr:false `
             /p:DeleteExistingFiles=True `
             /p:platform="x64" `
